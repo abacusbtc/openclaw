@@ -308,7 +308,9 @@ type CliBackendResolveModelIdContext = {
 export type CliBackendJsonlUsage = Pick<
   NormalizedUsage,
   "input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h" | "total"
->;
+> & {
+  contextUsage?: NormalizedUsage["contextUsage"];
+};
 
 export type CliBackendParsedJsonlEvent =
   | { kind: "text"; text: string }

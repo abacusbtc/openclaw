@@ -112,12 +112,15 @@ export async function executePreparedCliRun(
   }
   const nodePlacement = executionTarget.kind === "node" ? executionTarget.placement : null;
   const usePluginOwnedExecution = executionTarget.kind === "plugin";
+  const effectiveCliSessionId =
+    cliSessionIdToUse ??
+    (context.params.forceNewSession ? undefined : resolveCliSessionId(context.reusableCliSession));
   const { sessionId: resolvedSessionId, isNew } = resolveSessionIdToSend({
     backend,
-    cliSessionId: cliSessionIdToUse,
+    cliSessionId: effectiveCliSessionId,
   });
   const useResume = Boolean(
-    cliSessionIdToUse && resolvedSessionId && backend.resumeArgs && backend.resumeArgs.length > 0,
+    effectiveCliSessionId && resolvedSessionId && backend.resumeArgs && backend.resumeArgs.length > 0,
   );
   const resendSystemPromptForSoftResume = context.reusableCliSession.mode === "reuse-with-drift";
   const systemPromptArg = resolveSystemPromptUsage({
@@ -131,13 +134,13 @@ export async function executePreparedCliRun(
   let systemPromptFile: Awaited<ReturnType<typeof writeCliSystemPromptFile>> | undefined;
   const nodeSystemPrompt = nodePlacement && shouldSendSystemPrompt ? systemPromptArg : undefined;
 
-  const attemptPrompt = cliSessionIdToUse
+  const attemptPrompt = effectiveCliSessionId
     ? params.prompt
     : (context.openClawHistoryPrompt ?? params.prompt);
   // Recovery reuses preparation. Only the same native resume receives this handoff.
   const resumeContext =
     useResume &&
-    cliSessionIdToUse === resolveCliSessionId(context.reusableCliSession) &&
+    effectiveCliSessionId === resolveCliSessionId(context.reusableCliSession) &&
     !params.forkCliSessionOnResume
       ? context.resumeContext
       : undefined;

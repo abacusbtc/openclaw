@@ -140,8 +140,13 @@ function normalizeCliUsageRecord(raw: unknown): CliUsage | undefined {
     cacheWrite: usage.cacheWrite || undefined,
     cacheWrite1h: usage.cacheWrite1h || undefined,
     total: usage.total || undefined,
+    ...(usage.contextUsage ? { contextUsage: usage.contextUsage } : {}),
   };
-  return Object.values(cliUsage).some((value) => (value ?? 0) > 0) ? cliUsage : undefined;
+  return Object.values(cliUsage).some(
+    (value) => (typeof value === "number" && value > 0) || (isRecord(value) && Object.keys(value).length > 0),
+  )
+    ? cliUsage
+    : undefined;
 }
 
 export function readCliUsage(parsed: Record<string, unknown>): CliUsage | undefined {

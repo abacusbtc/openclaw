@@ -52,6 +52,32 @@ export function createOpenAiCompatibleCliUsageCases() {
   const cachedInput = { input_tokens: 100, output_tokens: 10 };
   return [
     {
+      name: "Gemini stream-json with separate active context and cumulative cacheRead",
+      raw: {
+        input: 165407,
+        output: 8740,
+        cacheRead: 1989728,
+        total: 2163875,
+        contextUsage: {
+          state: "available",
+          promptTokens: 165407,
+          totalTokens: 174147,
+        },
+      },
+      normalized: {
+        input: 165407,
+        output: 8740,
+        cacheRead: 1989728,
+        cacheWrite: undefined,
+        total: 2163875,
+        contextUsage: {
+          state: "available",
+          promptTokens: 165407,
+          totalTokens: 174147,
+        },
+      },
+    },
+    {
       name: "OpenAI snake_case",
       raw: { prompt_tokens: 17, completion_tokens: 5, ...openAiMetadata },
       normalized: openAiExpected,

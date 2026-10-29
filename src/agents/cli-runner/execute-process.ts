@@ -20,6 +20,7 @@ import { withChildProcessOperation } from "../../process/spawn-diagnostics.js";
 import { getProcessSupervisor } from "../../process/supervisor/index.js";
 import type { RunExit } from "../../process/supervisor/types.js";
 import { truncateUtf8Suffix } from "../../utils/utf8-truncate.js";
+import { resolveUserPath } from "../../utils.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { runWithAgentToolSourceExecutionScope } from "../agent-tool-source-execution-guard.js";
 import type { CliOutput, CliTerminalInterruption } from "../cli-output-contracts.js";
@@ -436,7 +437,13 @@ export async function executeCliProcess(params: {
               onCancel: () => {
                 processCancelled = true;
               },
-              cwd: context.cwd ?? context.workspaceDir,
+              cwd: (() => {
+                const candidate =
+                  context.cwd?.trim() ||
+                  context.workspaceDir?.trim() ||
+                  context.params.workspaceDir?.trim();
+                return candidate ? resolveUserPath(candidate) : undefined;
+              })(),
               env: params.env,
               input: params.stdin ?? "",
               secretInput: runParams.nativeAuthOnly
