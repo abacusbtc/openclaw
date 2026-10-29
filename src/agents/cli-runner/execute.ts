@@ -113,8 +113,7 @@ export async function executePreparedCliRun(
   const nodePlacement = executionTarget.kind === "node" ? executionTarget.placement : null;
   const usePluginOwnedExecution = executionTarget.kind === "plugin";
   const effectiveCliSessionId =
-    cliSessionIdToUse ??
-    (context.params.forceNewSession ? undefined : resolveCliSessionId(context.reusableCliSession));
+    cliSessionIdToUse ?? resolveCliSessionId(context.reusableCliSession);
   const { sessionId: resolvedSessionId, isNew } = resolveSessionIdToSend({
     backend,
     cliSessionId: effectiveCliSessionId,
