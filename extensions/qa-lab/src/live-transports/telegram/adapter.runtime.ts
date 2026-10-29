@@ -205,12 +205,23 @@ export async function createTelegramQaTransportAdapter(
     { observer: number; chatId: number; messageId: number }
   >();
   const busMessages = new Map<string, { id: string; update?: TelegramUserbotUpdate }>();
+  // Native identities outlive a bus reset: delayed edits must not become new replies.
+  const retiredNativeKeys = new Set<string>();
+  const pendingUpdates = new Set<Promise<void>>();
+  let resetting = false;
   let sendsInFlight = 0;
   let deferredReplies: Array<{ update: TelegramUserbotUpdate; observer: number }> = [];
   let localMessageId = 1;
 
   const publishUpdate = async (update: TelegramUserbotUpdate, observer: number) => {
     const key = nativeKey(observer, update.chatId, update.messageId);
+    if (
+      retiredNativeKeys.has(key) ||
+      (update.replyToMessageId !== undefined &&
+        retiredNativeKeys.has(nativeKey(observer, update.chatId, update.replyToMessageId)))
+    ) {
+      return;
+    }
     const existing = busMessages.get(key);
     if (update.kind === "edit" && existing) {
       await context.messages.editMessage({
@@ -249,7 +260,11 @@ export async function createTelegramQaTransportAdapter(
     busMessages.set(key, { id: outbound.id, update });
   };
 
-  const observeUpdate = async (update: TelegramUserbotUpdate, observer: number) => {
+  const processUpdate = async (update: TelegramUserbotUpdate, observer: number) => {
+    if (resetting) {
+      retiredNativeKeys.add(nativeKey(observer, update.chatId, update.messageId));
+      return;
+    }
     observerState.updateCount += 1;
     observerState.relevantUpdateKinds.add(update.kind);
     if (
@@ -269,6 +284,15 @@ export async function createTelegramQaTransportAdapter(
       return;
     }
     await publishUpdate(update, observer);
+  };
+  const observeUpdate = async (update: TelegramUserbotUpdate, observer: number) => {
+    const pending = processUpdate(update, observer);
+    pendingUpdates.add(pending);
+    try {
+      await pending;
+    } finally {
+      pendingUpdates.delete(pending);
+    }
   };
 
   try {
@@ -547,16 +571,26 @@ export async function createTelegramQaTransportAdapter(
         sendsInFlight -= 1;
       }
     },
-    resetTransport: () => {
-      resetRoutes();
-      primaryAlias = undefined;
-      nativeMessageIds.clear();
-      busMessages.clear();
-      deferredReplies = [];
-      observerState.updateCount = 0;
-      observerState.filteredCount = 0;
-      observerState.matchedCount = 0;
-      observerState.relevantUpdateKinds.clear();
+    resetTransport: async () => {
+      resetting = true;
+      try {
+        // Settle admitted observer writes before the transport clears its bus state.
+        await Promise.all(pendingUpdates);
+        for (const key of busMessages.keys()) {
+          retiredNativeKeys.add(key);
+        }
+        resetRoutes();
+        primaryAlias = undefined;
+        nativeMessageIds.clear();
+        busMessages.clear();
+        deferredReplies = [];
+        observerState.updateCount = 0;
+        observerState.filteredCount = 0;
+        observerState.matchedCount = 0;
+        observerState.relevantUpdateKinds.clear();
+      } finally {
+        resetting = false;
+      }
     },
     async prepareFlow({ config }) {
       if (
@@ -572,11 +606,21 @@ export async function createTelegramQaTransportAdapter(
           participantAliases: participants.map((participant) => participant.alias),
           forumTopicId: credential.forumTopicId,
         },
-        readTelegramMessages: () => {
+        readTelegramMessages: (replyToId?: string) => {
           assertTransportHealthy();
-          // Share the existing message lifetime; readers cannot mutate a later snapshot.
-          return [...busMessages.values()].flatMap(({ update }) =>
-            update ? [structuredClone(update)] : [],
+          const reply = replyToId === undefined ? undefined : nativeMessageIds.get(replyToId);
+          if (replyToId !== undefined && !reply) {
+            return [];
+          }
+          // Correlate in the observer namespace; TDLib IDs are not cross-account identities.
+          return [...busMessages.entries()].flatMap(([key, { update }]) =>
+            update &&
+            (!reply ||
+              (update.chatId === reply.chatId &&
+                update.replyToMessageId === reply.messageId &&
+                key === nativeKey(reply.observer, update.chatId, update.messageId)))
+              ? [structuredClone(update)]
+              : [],
           );
         },
       };
