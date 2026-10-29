@@ -27,8 +27,9 @@ export function resolveCliTranscriptUsage(
     return CLI_TRANSCRIPT_UNAVAILABLE_USAGE;
   }
   const counters = turnUsage ?? lastCallUsage;
-  if (lastCallUsage.contextUsage) {
-    return { ...counters, contextUsage: lastCallUsage.contextUsage };
+  const contextUsage = lastCallUsage.contextUsage ?? turnUsage?.contextUsage;
+  if (contextUsage) {
+    return { ...counters, contextUsage };
   }
   const promptTokens =
     (lastCallUsage.input ?? 0) + (lastCallUsage.cacheRead ?? 0) + (lastCallUsage.cacheWrite ?? 0);

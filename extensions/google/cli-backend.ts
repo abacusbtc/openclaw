@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
-import type { CliBackendPlugin } from "openclaw/plugin-sdk/cli-backend";
+import type {
+  CliBackendParseJsonlLifecycleEvent,
+  CliBackendParsedJsonlLifecycleEvent,
+  CliBackendPlugin,
+} from "openclaw/plugin-sdk/cli-backend";
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
   pro: "gemini-3.1-pro-preview",
   flash: "gemini-3.1-flash-preview",
@@ -89,6 +93,34 @@ function resolveGeminiCliExecutionArgs(
   return [...args, GEMINI_ALLOWED_MCP_SERVERS_ARG, allowedServer, ...positionalArgs];
 }
 
+export const parseGeminiCliJsonlLifecycleEvent: CliBackendParseJsonlLifecycleEvent = (line) => {
+  if (!line.includes("compacting") && !line.includes("compact_result") && !line.includes("compact_boundary")) {
+    return null;
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (parsed.compact_result === "success" || parsed.compact_result === "failed") {
+    return {
+      kind: "compaction",
+      phase: "end",
+      completed: parsed.compact_result === "success",
+    };
+  }
+  if (parsed.type === "system" && (parsed.subtype === "status" || parsed.subtype === "compact_boundary")) {
+    if (parsed.status === "compacting") {
+      return { kind: "compaction", phase: "start" };
+    }
+    if (parsed.compact_result === "success") {
+      return { kind: "compaction", phase: "end", completed: true };
+    }
+  }
+  return null;
+};
+
 export function buildGoogleGeminiCliBackend(): CliBackendPlugin {
   return {
     id: "google-gemini-cli",
@@ -126,6 +158,7 @@ export function buildGoogleGeminiCliBackend(): CliBackendPlugin {
     authEpochMode: "profile-only",
     normalizeConfig: normalizeGeminiCliBackendConfig,
     resolveExecutionArgs: resolveGeminiCliExecutionArgs,
+    parseJsonlLifecycleEvent: parseGeminiCliJsonlLifecycleEvent,
     prepareExecution: async (ctx) => {
       const { prepareGeminiCliExecution } = await import("./cli-backend-auth.runtime.js");
       const privateContext = ctx as typeof ctx & {
@@ -185,6 +218,7 @@ export function buildGoogleGeminiCliBackend(): CliBackendPlugin {
       modelAliases: GEMINI_MODEL_ALIASES,
       sessionMode: "existing",
       sessionIdFields: ["session_id", "sessionId"],
+      freshSessionRecovery: "invalidated-only",
       serialize: true,
     },
   };
