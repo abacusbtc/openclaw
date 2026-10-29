@@ -26,6 +26,7 @@ vi.mock("node:worker_threads", async (importOriginal) => ({
     return fixture.parent;
   },
 }));
+// mock-isolation: Worker-side access checks are injected; real ownership checks need a live state database.
 vi.mock("../infra/gateway-state-owner.js", () => ({
   assertStateDatabaseAccessAllowed: fixture.assertAccess,
   GatewayStateOwnerContentionError: class extends Error {},
@@ -50,6 +51,7 @@ vi.mock("../infra/sqlite-worker-identity.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../infra/sqlite-worker-identity.js")>()),
   assertExistingDatabaseIdentity() {},
 }));
+// mock-isolation: Renewal outcomes are injected to classify loss causes without real lease rows.
 vi.mock("./openclaw-state-lease-store.js", () => ({
   renewOpenClawStateLeaseInTransaction: fixture.renew,
   readOpenClawStateLeaseExpiry: fixture.readExpiry,
